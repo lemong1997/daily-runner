@@ -8,28 +8,39 @@ on:
         default: routine
   schedule:
     - cron: "17 */2 * * *"
+    - cron: "50 4 * * *"
     - cron: "5 5 * * *"
+    - cron: "15 12 * * *"
     - cron: "35 12 * * *"
-
-concurrency:
-  group: acct
-  cancel-in-progress: false
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2]
+    concurrency:
+      group: acct-${{ matrix.n }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: run
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
-          ACCT_USER: ${{ secrets.ACCT_USER }}
-          ACCT_PASS: ${{ secrets.ACCT_PASS }}
-          ACCT_ZONE: ${{ vars.ACCT_ZONE }}
-          MODE: ${{ github.event.inputs.mode || ((github.event.schedule == '5 5 * * *' || github.event.schedule == '35 12 * * *') && 'window' || 'routine') }}
+          ACCT_USER: ${{ secrets[format('ACCT_USER_{0}', matrix.n)] }}
+          ACCT_PASS: ${{ secrets[format('ACCT_PASS_{0}', matrix.n)] }}
+          ACCT_ZONE: ${{ vars[format('ACCT_ZONE_{0}', matrix.n)] }}
+          NOT_BEFORE: ${{ vars[format('ROUTINE_FROM_{0}', matrix.n)] }}
+          PICKED: ${{ github.event.inputs.mode }}
+          SCHED: ${{ github.event.schedule }}
         run: |
-          echo "mode: $MODE  utc: $(date -u '+%H:%M:%S')  trigger: ${{ github.event.schedule || 'manual' }}"
+          MODE="$PICKED"
+          if [ -z "$MODE" ]; then
+            if [ "$SCHED" = "17 */2 * * *" ]; then MODE=routine; else MODE=window; fi
+          fi
+          echo "slot ${{ matrix.n }}  mode: $MODE  utc: $(date -u '+%H:%M:%S')  trigger: ${SCHED:-manual}"
           python3 runner.py "$MODE"
       - name: keep details
         if: always()
@@ -40,12 +51,12 @@ jobs:
           set +e
           [ -s detail.log ] || exit 0
           mkdir -p ~/.ssh && echo "$LOG_KEY" > ~/.ssh/k && chmod 600 ~/.ssh/k
-          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null; echo "scan rc=$?"
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/k -o IdentitiesOnly=yes"
           git clone -q --depth 1 "git@github.com:$LOG_REPO.git" logrepo >/dev/null 2>&1; echo "clone rc=$?"
           [ -d logrepo/.git ] || { echo "details not kept"; exit 0; }
           mkdir -p logrepo/logs
-          cat detail.log >> "logrepo/logs/$(TZ=Asia/Ho_Chi_Minh date +%F).txt"
+          cat detail.log >> "logrepo/logs/$(TZ=Asia/Ho_Chi_Minh date +%F)-a${{ matrix.n }}.txt"
           cd logrepo && git add -A >/dev/null
-          git -c user.name=runner -c user.email=runner@users.noreply.github.com commit -q -m "log" >/dev/null 2>&1; echo "commit rc=$?"
-          git push -q >/dev/null 2>&1 || { git pull -q --rebase >/dev/null 2>&1; git push -q >/dev/null 2>&1; }; echo "push rc=$?"
+          git -c user.name=runner -c user.email=runner@users.noreply.github.com commit -q -m "log" >/dev/null 2>&1
+          for i in 1 2 3; do git push -q >/dev/null 2>&1 && break; git pull -q --rebase >/dev/null 2>&1; done; echo "push rc=$?"

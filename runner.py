@@ -349,6 +349,9 @@ def routine():
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "routine"
     rc = 0
+    hold = os.environ.get("NOT_BEFORE", "").strip()
+    if mode == "routine" and hold and time.time() < float(hold):
+        print("held"); return
     try:
         C.login(); guard("start"); note("=== run", mode, me())
         window() if mode == "window" else routine()
