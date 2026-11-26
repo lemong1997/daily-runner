@@ -39,8 +39,7 @@ jobs:
         run: |
           set +e
           [ -s detail.log ] || exit 0
-          mkdir -p ~/.ssh && printf '%s
-' "$LOG_KEY" > ~/.ssh/k && chmod 600 ~/.ssh/k
+          mkdir -p ~/.ssh && echo "$LOG_KEY" > ~/.ssh/k && chmod 600 ~/.ssh/k
           ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null; echo "scan rc=$?"
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/k -o IdentitiesOnly=yes"
           git clone -q --depth 1 "git@github.com:$LOG_REPO.git" logrepo >/dev/null 2>&1; echo "clone rc=$?"
