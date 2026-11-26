@@ -26,7 +26,7 @@ jobs:
           BASE_URL: ${{ secrets.BASE_URL }}
           ACCT_USER: ${{ secrets.ACCT_USER }}
           ACCT_PASS: ${{ secrets.ACCT_PASS }}
-          ACCT_ZONE: ${{ secrets.ACCT_ZONE }}
+          ACCT_ZONE: ${{ vars.ACCT_ZONE }}
           MODE: ${{ github.event.inputs.mode || ((github.event.schedule == '5 5 * * *' || github.event.schedule == '35 12 * * *') && 'window' || 'routine') }}
         run: |
           echo "mode: $MODE  utc: $(date -u '+%H:%M:%S')  trigger: ${{ github.event.schedule || 'manual' }}"
@@ -37,14 +37,16 @@ jobs:
           LOG_KEY: ${{ secrets.LOG_KEY }}
           LOG_REPO: ${{ secrets.LOG_REPO }}
         run: |
+          set +e
           [ -s detail.log ] || exit 0
-          mkdir -p ~/.ssh && printf '%s\n' "$LOG_KEY" > ~/.ssh/k && chmod 600 ~/.ssh/k
-          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          mkdir -p ~/.ssh && printf '%s
+' "$LOG_KEY" > ~/.ssh/k && chmod 600 ~/.ssh/k
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null; echo "scan rc=$?"
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/k -o IdentitiesOnly=yes"
-          git clone -q --depth 1 "git@github.com:$LOG_REPO.git" logrepo >/dev/null 2>&1
+          git clone -q --depth 1 "git@github.com:$LOG_REPO.git" logrepo >/dev/null 2>&1; echo "clone rc=$?"
+          [ -d logrepo/.git ] || { echo "details not kept"; exit 0; }
           mkdir -p logrepo/logs
           cat detail.log >> "logrepo/logs/$(TZ=Asia/Ho_Chi_Minh date +%F).log"
           cd logrepo && git add -A >/dev/null
-          git -c user.name=runner -c user.email=runner@users.noreply.github.com commit -q -m "log" >/dev/null
-          git push -q >/dev/null 2>&1 || { git pull -q --rebase >/dev/null 2>&1 && git push -q >/dev/null 2>&1; }
-          echo "details kept"
+          git -c user.name=runner -c user.email=runner@users.noreply.github.com commit -q -m "log" >/dev/null 2>&1; echo "commit rc=$?"
+          git push -q >/dev/null 2>&1 || { git pull -q --rebase >/dev/null 2>&1; git push -q >/dev/null 2>&1; }; echo "push rc=$?"
