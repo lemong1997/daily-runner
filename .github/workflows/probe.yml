@@ -1,0 +1,21 @@
+name: probe
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: time
+        run: |
+          echo "trigger: ${{ github.event.schedule || 'manual' }}"
+          echo "utc: $(date -u '+%Y-%m-%d %H:%M:%S')"
+      - name: reach
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+        run: |
+          curl -sS -m 20 -o /dev/null -w "http %{http_code} %{time_total}s\n" "$BASE_URL/game/version"
