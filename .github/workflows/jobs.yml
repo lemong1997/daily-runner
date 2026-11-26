@@ -45,7 +45,7 @@ jobs:
           git clone -q --depth 1 "git@github.com:$LOG_REPO.git" logrepo >/dev/null 2>&1; echo "clone rc=$?"
           [ -d logrepo/.git ] || { echo "details not kept"; exit 0; }
           mkdir -p logrepo/logs
-          cat detail.log >> "logrepo/logs/$(TZ=Asia/Ho_Chi_Minh date +%F).log"
+          cat detail.log >> "logrepo/logs/$(TZ=Asia/Ho_Chi_Minh date +%F).txt"
           cd logrepo && git add -A >/dev/null
           git -c user.name=runner -c user.email=runner@users.noreply.github.com commit -q -m "log" >/dev/null 2>&1; echo "commit rc=$?"
           git push -q >/dev/null 2>&1 || { git pull -q --rebase >/dev/null 2>&1; git push -q >/dev/null 2>&1; }; echo "push rc=$?"
