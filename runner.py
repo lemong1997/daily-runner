@@ -11,6 +11,7 @@ RATIO = float(os.environ.get("SAFE_RATIO", "1.3"))   # only fight players when a
 HERE = os.path.dirname(os.path.abspath(__file__))
 DETAIL = open(os.path.join(HERE, "detail.log"), "a", encoding="utf-8")
 STATS = {}
+SKIP = {x.strip() for x in os.environ.get("SKIP", "").split(",") if x.strip()}
 
 
 class Stop(Exception):
@@ -357,10 +358,11 @@ def window():
 def routine():
     for name, fn in (("claims", claims), ("freebies", freebies), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
-    story(); guard("story")
-    packs()                                              # level rewards appear right after a level-up
-    if noodles():
-        story(); guard("story2"); packs()
+    if "story" not in SKIP:
+        story(); guard("story")
+        packs()                                          # level rewards appear right after a level-up
+        if noodles():
+            story(); guard("story2"); packs()
     tasks = chests()
     upkeep(tasks); guard("upkeep")
     trial(); guard("trial")
