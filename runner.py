@@ -465,7 +465,9 @@ def training():
     if not m: return
     ch, st = int(attr(m.group(0), "currentchap")), int(attr(m.group(0), "currentstage"))
     stamina = me()["curaction"]
-    boosted = bool(do("x2", "/rl_w_propuse", 1800, Goodsid=32))
+    ich = re.search(r"<ichiraku[^>]*>", C.call("/rl_r_next_ichiraku", 1))
+    free = int(attr(ich.group(0), "remaining", "0")) if ich and attr(ich.group(0), "available") == "1" else 0
+    boosted = os.environ.get("BOOST", "1") != "0" and bool(do("x2", "/rl_w_propuse", 1800, Goodsid=32))
     until = time.time() + 295
     PACE = 0.15
     backs = 0
@@ -479,6 +481,11 @@ def training():
             if stamina < cost:
                 if boosted and time.time() > until:
                     note("training: boost over, keeping remaining noodles"); break
+                if free > 0:                             # the two free daily refills go first (they fill to the cap)
+                    r = do("noodles", "/rl_w_ramen", 1)
+                    free -= 1
+                    if r:
+                        stamina = gi(r, "bodyvalue", stamina); continue
                 gid = next((i for i in ("4", "3") if stock.get(i, 0) > 0), None)
                 if eats <= 0 or not gid:
                     note("training: out of stamina and refills"); break
