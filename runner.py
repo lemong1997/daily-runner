@@ -186,6 +186,23 @@ def gate():
         if not do("gate", "/rl_w_eight_gate", 4, traintype=1, version=2): return
 
 
+def extras():
+    """Daily tasks that only need free things: the free recruit and opening chests with keys we already hold."""
+    prog = dict(re.findall(r'<task id="(\d+)" process="(\d+)"', C.call("/rl_r_dailytask", 1)))
+    if int(prog.get("14", "0")) < 1:
+        x = C.call("/rl_w_recruit", 1900, Type=1, Free=1)      # refused by the server until the free timer is ready
+        note("draw", code(x), g(x, "message"), reward(x)[:120])
+        if code(x) == "0": bump("draw")
+    left = 3 - int(prog.get("15", "0"))
+    for gid in ("24", "23", "22"):                             # bronze, then silver, then gold keys
+        while left > 0:
+            c = C.call("/rl_w_propuse", 1804)
+            tag = next((i for i in re.findall(r"<item [^>]*>", c) if attr(i, "propid") == gid), "")
+            if int(attr(tag, "amount", "0") or 0) <= 0: break   # no key: opening would cost premium currency
+            if not do("box", "/rl_w_propuse", 1803, Goodsid=gid): break
+            left -= 1
+
+
 # ---------------------------------------------------------------- towers ("Battles")
 def tower():
     d = C.call("/rl_r_dup", 7002)
@@ -585,7 +602,7 @@ def hunt():
 
 
 def routine():
-    for name, fn in (("claims", claims), ("freebies", freebies), ("tower", tower), ("spar", spar), ("ladder", ladder)):
+    for name, fn in (("claims", claims), ("freebies", freebies), ("extras", extras), ("tower", tower), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
     if "story" not in SKIP:
         story(); guard("story")
