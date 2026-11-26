@@ -187,6 +187,29 @@ def gate():
         if not do("gate", "/rl_w_eight_gate", 4, traintype=1, version=2): return
 
 
+# ---------------------------------------------------------------- towers ("Battles")
+def tower():
+    d = C.call("/rl_r_dup", 7002)
+    if code(d) != "0": return
+    for i in re.findall(r'<milestone id="(\d+)"[^>]*status="ready"', d):
+        do("tower-star", "/rl_w_dup", 3101, AwardID=i)
+    cnt = re.search(r"<dup_count>.*?</dup_count>", d, re.S)
+    remain = gi(cnt.group(0), "remain") if cnt else 0
+    ok = [i + 1 for i, x in enumerate(re.findall(r"<dup [^>]*>", d)) if attr(x, "selectable") == "2"]
+    if remain > 0 and ok:                                # daily sweeps go to the highest cleared towers
+        do("sweep", "/rl_w_dup", 3102, DupId="|".join(str(i) for i in ok[-remain:]))
+    head = re.search(r"<duplist[^>]*>", d)
+    if not head: return
+    ch, rd = attr(head.group(0), "maxchap", "0"), int(attr(head.group(0), "current_round", "1"))
+    for r in range(rd, 8):                               # push the frontier while we keep winning
+        x = C.call("/rl_w_dup", 3100, Chap=ch, Round=r)
+        m = re.search(r"<preview[^>]*>", x)
+        won = code(x) == "0" and m and attr(m.group(0), "result") == "1"
+        note("tower", ch, r, code(x), g(x, "message"), "win" if won else "no", reward(x))
+        if not won: break
+        bump("tower")
+
+
 # ---------------------------------------------------------------- stamina
 def levels():
     with open(os.path.join(HERE, "levels.csv")) as f:
@@ -356,7 +379,7 @@ def window():
 
 
 def routine():
-    for name, fn in (("claims", claims), ("freebies", freebies), ("spar", spar), ("ladder", ladder)):
+    for name, fn in (("claims", claims), ("freebies", freebies), ("tower", tower), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
     if "story" not in SKIP:
         story(); guard("story")
