@@ -159,8 +159,6 @@ def chests():
 
 # ---------------------------------------------------------------- free daily actions
 def freebies():
-    x = C.call("/rl_r_mtree", 0)
-    if gi(x, "freeTimes") > 0: do("tree", "/rl_w_mtree", 0)
     x = C.call("/rl_r_wheel", 1401)
     if code(x) == "0" and gi(x, "freetimes") > 0 and gi(x, "lasttime") > 0: do("wheel", "/rl_w_wheel", 1400)
     x = C.call("/rl_x_small_activity", 12)
@@ -312,16 +310,25 @@ def spar():
 
 
 def ladder():
-    x = C.call("/rl_r_sport", 8100)
-    if code(x) != "0" or gi(x, "todayresttime") <= 0: return
-    my_rank = gi(x, "rank")
+    """Daily tasks need 5 challenges and 1000 reputation; only clearly weaker players are challenged."""
+    prog = dict(re.findall(r'<task id="(\d+)" process="(\d+)"', C.call("/rl_r_dailytask", 1)))
+    if int(prog.get("4", "0")) >= 5 and int(prog.get("19", "0")) >= 1000: return
     mine = me()
-    for u in re.findall(r"<user>(.*?)</user>", x, re.S):
-        if g(u, "host") == "1" or gi(u, "rank") >= my_rank: continue
-        n = C.call("/rl_r_nickinfo", 5000, Nick=g(u, "nick"))
-        if code(n) == "0" and safe(mine, gi(n, "attackhigh"), gi(n, "defenseHigh"), gi(n, "chakrahigh")):
-            do("ladder", "/rl_w_sport", 8200, ToRank=g(u, "rank")); return
-    note("ladder: nobody clearly weaker above us")
+    for _ in range(5):
+        x = C.call("/rl_r_sport", 8100)
+        if code(x) != "0" or gi(x, "todayresttime") <= 0 or gi(x, "restbatter") <= 0 or gi(x, "resttime") > 0: return
+        pick = None
+        for u in sorted(re.findall(r"<user>(.*?)</user>", x, re.S), key=lambda u: gi(u, "rank")):
+            if g(u, "host") == "1": continue
+            n = C.call("/rl_r_nickinfo", 5000, Nick=g(u, "nick"))
+            if code(n) == "0" and safe(mine, gi(n, "attackhigh"), gi(n, "defenseHigh"), gi(n, "chakrahigh")):
+                pick = g(u, "rank"); break
+        if not pick:
+            note("ladder: nobody clearly weaker in sight"); return
+        r = do("ladder", "/rl_w_sport", 8200, ToRank=pick)
+        m = re.search(r"<preview[^>]*>", r or "")
+        if not m or attr(m.group(0), "result") != "1":
+            note("ladder: not a win, stopping"); return
 
 
 # ---------------------------------------------------------------- upkeep with soft currency only
@@ -507,6 +514,27 @@ def training():
     note("training done", me(), "boost left s", int(until - time.time()))
 
 
+def closing():
+    """Last run of the day: collect chests, then take every money-tree shake so the silver arrives as late as possible."""
+    global GOLD
+    chests()
+    before = me()["gold"]; paid = 0
+    for _ in range(10):
+        x = C.call("/rl_r_mtree", 0)
+        if code(x) != "0" or gi(x, "usedTimes") >= gi(x, "timesperday"): break
+        free = gi(x, "freeTimes") > 0
+        if not free and gi(x, "shake_cost", 999) > 10:
+            note("tree: price above 10, leaving it"); break
+        if not do("tree", "/rl_w_mtree", 0): break
+        paid += 0 if free else 1
+    after = me()["gold"]
+    note("tree: paid shakes", paid, "premium", before, "->", after)
+    if before - after > 10 * paid:
+        raise Stop("tree cost more than expected")
+    GOLD = None                                          # the agreed tree cost is not a guard violation
+    chests()
+
+
 def routine():
     for name, fn in (("claims", claims), ("freebies", freebies), ("tower", tower), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
@@ -530,7 +558,7 @@ def main():
         print("held"); return
     try:
         C.login(); guard("start"); note("=== run", mode, me())
-        {"window": window, "war": war, "train": training}.get(mode, routine)()
+        {"window": window, "war": war, "train": training, "close": closing}.get(mode, routine)()
         guard("end")
     except Stop as e:
         rc = 1; note("STOP", e); print("stopped:", str(e).split(":")[0])
