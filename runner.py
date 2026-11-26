@@ -615,7 +615,7 @@ def hunt():
 
 
 def routine():
-    for name, fn in (("claims", claims), ("freebies", freebies), ("extras", extras), ("tower", tower), ("spar", spar), ("ladder", ladder)):
+    for name, fn in (("claims", claims), ("freebies", freebies), ("extras", extras), ("tower", tower), ("ladder", ladder)):
         fn(); guard(name)
     if "story" not in SKIP:
         story(); guard("story")
@@ -637,7 +637,7 @@ def main():
         print("held"); return
     try:
         C.login(); guard("start"); note("=== run", mode, me())
-        {"window": window, "war": war, "train": training, "close": closing, "hunt": hunt}.get(mode, routine)()
+        {"window": window, "war": war, "train": training, "close": closing, "hunt": hunt, "spar": spar}.get(mode, routine)()
         guard("end")
     except Stop as e:
         rc = 1; note("STOP", e); print("stopped:", str(e).split(":")[0])
