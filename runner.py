@@ -193,6 +193,19 @@ def extras():
         x = C.call("/rl_w_recruit", 1900, Type=1, Free=1)      # refused by the server until the free timer is ready
         note("draw", code(x), g(x, "message"), reward(x)[:120])
         if code(x) == "0": bump("draw")
+    need = 2 - int(prog.get("3", "0"))                         # seals: claim finished ones, then start ready ones; never pay to skip the timer
+    if need > 0:
+        p = C.call("/rl_r_next_plunder", 1)
+        seals = [(attr(t, "id"), attr(t, "state")) for t in re.findall(r"<seal [^>]*>", p)]
+        for cmd, state in ((2801, "complete"), (2800, "ready")):
+            for sid, st in seals:
+                if need <= 0 or st != state: continue
+                x = C.call("/rl_w_markchip", cmd, MarkID=sid, UseCash=0)
+                note("seal", cmd, sid, code(x), g(x, "message") or attr(x, "message"))
+                if code(x) == "0":
+                    bump("seal"); need -= 1
+                else:
+                    break
     left = 3 - int(prog.get("15", "0"))
     for gid in ("24", "23", "22"):                             # bronze, then silver, then gold keys
         while left > 0:
