@@ -31,6 +31,7 @@ jobs:
           ACCT_ZONE: ${{ vars[format('ACCT_ZONE_{0}', matrix.n)] }}
           NOT_BEFORE: ${{ vars[format('ROUTINE_FROM_{0}', matrix.n)] }}
           SKIP: ${{ vars[format('SKIP_{0}', matrix.n)] }}
+          GOLD_BUDGET: ${{ vars[format('GOLD_BUDGET_{0}', matrix.n)] }}
           PICKED: ${{ github.event.inputs.mode }}
           MAX_WAIT: ${{ github.event.inputs.wait }}
           SCHED: ${{ github.event.schedule }}

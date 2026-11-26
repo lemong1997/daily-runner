@@ -535,6 +535,55 @@ def closing():
     chests()
 
 
+def hunt():
+    """Fight stage bosses whose featured reward is a 5-star card we do not own yet.
+    Free attempts first; paid replays only inside GOLD_BUDGET (premium currency per run, default 0)."""
+    global GOLD, PACE
+    scan_only = os.environ.get("HUNT_SCAN") == "1"
+    budget = int(os.environ.get("GOLD_BUDGET") or 0)
+    bag = C.call("/rl_r_next_bag", 1)
+    owned = {(g(c, "type"), g(c, "id")) for c in re.findall(r"<card>(.*?)</card>", bag, re.S)}
+    m = re.search(r"<chapinfo[^>]*>", C.call("/rl_r_adventure", 1))
+    if not m: return
+    top = (int(attr(m.group(0), "currentchap")), int(attr(m.group(0), "currentstage")))
+    start_gold = me()["gold"]; spent = 0; todo = []; got = 0
+    PACE = 0.15
+    try:
+        for ch in range(1, top[0] + 1):
+            for st in range(1, 30):
+                if (ch, st) > top: break
+                s = C.call("/rl_r_next_story", 1, Chapter=ch, Stage=st)
+                if code(s) != "0" or "<node" not in s: break
+                for node, feat in re.findall(r"(<node [^>]*>)\s*(<featured_reward [^>]*>)?", s):
+                    if attr(node, "boss") == "0" or attr(feat, "stars") != "5": continue
+                    key = (attr(feat, "type"), attr(feat, "id"))
+                    if key in owned: continue
+                    todo.append((ch, st, attr(node, "position_id"), attr(feat, "name"), attr(node, "available"), attr(node, "replay_gold")))
+                    if scan_only or attr(node, "available") != "1": continue
+                    price = int(attr(node, "replay_gold", "999"))
+                    for _ in range(40):
+                        x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(node, "position_id"), WastCashBoss=0)
+                        if code(x) == "40003" and budget - spent >= price:      # free attempts used up
+                            x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(node, "position_id"), WastCashBoss=1)
+                            if code(x) == "0": spent += price
+                        if code(x) != "0":
+                            note("hunt stop", ch, st, code(x), g(x, "message")); break
+                        f = re.search(r"<preview[^>]*>", x)
+                        if f and attr(f.group(0), "result") == "0":
+                            note("hunt: lost at", ch, st); break
+                        bump("hunt")
+                        if re.search(rf"<type>{key[0]}</type><id>{key[1]}</id>", x):
+                            owned.add(key); got += 1; note("hunt: got", attr(feat, "name"), "at", ch, st); break
+                    if code(C.call("/rl_r_mainpage", 1)) != "0": raise Stop("session lost")
+    finally:
+        PACE = 0.5
+    note("hunt summary: wanted", len(todo), "got", got, "paid", spent, todo[:60])
+    now = me()["gold"]
+    if start_gold - now > spent:
+        raise Stop("hunt cost more than recorded")
+    GOLD = None
+
+
 def routine():
     for name, fn in (("claims", claims), ("freebies", freebies), ("tower", tower), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
@@ -558,7 +607,7 @@ def main():
         print("held"); return
     try:
         C.login(); guard("start"); note("=== run", mode, me())
-        {"window": window, "war": war, "train": training, "close": closing}.get(mode, routine)()
+        {"window": window, "war": war, "train": training, "close": closing, "hunt": hunt}.get(mode, routine)()
         guard("end")
     except Stop as e:
         rc = 1; note("STOP", e); print("stopped:", str(e).split(":")[0])
