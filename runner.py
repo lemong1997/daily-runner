@@ -268,19 +268,46 @@ def safe(mine, a, d, c):
 
 
 def spar():
+    """Targets sorted by silver; fight one only if our attack beats its defense and it is not stronger than us.
+    Up to 5 fights per target; spar points are refilled with pills up to the daily pill limit."""
     mine = me()
-    if mine["pk_action"] <= 0: return
+    lim = C.call("/rl_r_energy_limits", 1)
+    tag = re.search(r"<hyourou[^>]*>", lim)
+    pills_left = int(attr(tag.group(0), "rest", "0")) if tag else 0
+    stock = {i: int(c) for i, c in re.findall(r'<tool id="(\d+)" count="(\d+)"', lim)}
     x = C.call("/rl_r_pk", 1600, Times=1)
     cand = []
     for u in re.findall(r"<user>(.*?)</user>", x, re.S):
-        if safe(mine, gi(u, "attackhigh"), gi(u, "defenseHigh"), gi(u, "chakrahigh")):
+        if mine["attacklow"] > gi(u, "defenseHigh") and gi(u, "attackhigh") < mine["attacklow"]:
             cand.append((gi(u, "coin"), g(u, "id")))
     cand.sort(reverse=True)
-    note("spar candidates", len(cand))
-    for coin, uid in cand[:mine["pk_action"]]:
-        r = do("spar", "/rl_w_pvp", 2701, ToUid=uid)
-        if not r or attr(re.search(r"<preview[^>]*>", r).group(0) if "<preview" in r else "", "result") != "1":
-            note("spar: not a win, stopping"); return
+    note("spar candidates", len(cand), "pills left today", pills_left, "top", cand[:3])
+    pk, idx, losses, done = mine["pk_action"], 0, 0, {}
+    while idx < len(cand):
+        if pk <= 0:
+            gid = next((i for i in ("6", "5") if stock.get(i, 0) > 0), None)
+            if pills_left <= 0 or not gid: break
+            r = do("pill", "/rl_w_propuse", 1800, Goodsid=gid)
+            if not r: break
+            pills_left -= 1; stock[gid] -= 1
+            pk = me()["pk_action"]
+            if pk <= 0: break
+            continue
+        coin, uid = cand[idx]
+        r = C.call("/rl_w_pvp", 2701, ToUid=uid)
+        if code(r) != "0":
+            note("spar skip", uid, code(r), g(r, "message")); idx += 1; continue
+        pk -= 1
+        m = re.search(r"<preview[^>]*>", r)
+        won = bool(m) and attr(m.group(0), "result") == "1"
+        bump("spar", won); note("spar", uid, "listed", coin, "win" if won else "LOSS", reward(r)[:160])
+        if not won:
+            losses += 1; idx += 1
+            if losses >= 2:
+                note("spar: two losses, stopping"); break
+            continue
+        done[uid] = done.get(uid, 0) + 1
+        if done[uid] >= 5: idx += 1
 
 
 def ladder():
