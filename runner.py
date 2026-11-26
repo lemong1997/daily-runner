@@ -307,14 +307,21 @@ def window():
     def info():
         x = C.call("/rl_w_xiao", 1)
         return x, g(x, "inact") == "1", gi(x, "resttime", 60)
-    t0 = time.time()
-    while True:
-        x, open_, rest = info()
-        if open_: break
-        if rest > 3600 or time.time() - t0 > 3600:
+    limit = float(os.environ.get("MAX_WAIT") or 3600)
+    x, open_, rest = info()
+    if not open_:
+        if rest > limit:
             note("window: not opening soon", rest); return
-        time.sleep(min(60, max(3, rest)))
-        if time.time() - t0 > 1500: C.login(); t0 = time.time() - 1          # keep the session fresh while waiting
+        note("window: waiting", rest)
+        if rest > 180:                                   # stay off the server while waiting
+            time.sleep(rest - 120); C.login(); globals()["GOLD"] = None
+        t0 = time.time()
+        while True:
+            x, open_, rest = info()
+            if open_: break
+            if time.time() - t0 > 900:
+                note("window: did not open", rest); return
+            time.sleep(min(30, max(2, rest)))
     note("window open, rest", rest)
     for _ in range(3):                                   # soft-currency boost, capped by the server
         if not do("boost", "/rl_w_xiao", 9, AddAttackType=1): break
