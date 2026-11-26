@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: routine or window
+        description: routine, window or war
         default: routine
       wait:
         description: max seconds a window run may wait
         default: "3600"
   schedule:
     - cron: "17 */2 * * *"
+    - cron: "50 11 * * *"
     - cron: "50 4 * * *"
     - cron: "5 5 * * *"
     - cron: "15 12 * * *"
@@ -25,7 +26,7 @@ jobs:
       matrix:
         n: [1, 2]
     concurrency:
-      group: acct-${{ matrix.n }}
+      group: acct-${{ matrix.n }}-${{ (github.event.inputs.mode == 'war' || github.event.schedule == '50 11 * * *') && 'war' || 'main' }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +44,7 @@ jobs:
         run: |
           MODE="$PICKED"
           if [ -z "$MODE" ]; then
-            if [ "$SCHED" = "17 */2 * * *" ]; then MODE=routine; else MODE=window; fi
+            if [ "$SCHED" = "17 */2 * * *" ]; then MODE=routine; elif [ "$SCHED" = "50 11 * * *" ]; then MODE=war; else MODE=window; fi
           fi
           echo "slot ${{ matrix.n }}  mode: $MODE  utc: $(date -u '+%H:%M:%S')  trigger: ${SCHED:-manual}"
           python3 runner.py "$MODE"

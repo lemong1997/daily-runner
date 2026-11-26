@@ -200,14 +200,16 @@ def tower():
         do("sweep", "/rl_w_dup", 3102, DupId="|".join(str(i) for i in ok[-remain:]))
     head = re.search(r"<duplist[^>]*>", d)
     if not head: return
-    ch, rd = attr(head.group(0), "maxchap", "0"), int(attr(head.group(0), "current_round", "1"))
-    for r in range(rd, 8):                               # push the frontier while we keep winning
-        x = C.call("/rl_w_dup", 3100, Chap=ch, Round=r)
-        m = re.search(r"<preview[^>]*>", x)
-        won = code(x) == "0" and m and attr(m.group(0), "result") == "1"
-        note("tower", ch, r, code(x), g(x, "message"), "win" if won else "no", reward(x))
-        if not won: break
-        bump("tower")
+    top = int(attr(head.group(0), "maxchap", "0"))
+    for ch in range(1, top + 1):                         # every floor of every tower can be fought once a day
+        for r in range(1, 8):
+            x = C.call("/rl_w_dup", 3100, Chap=ch, Round=r)
+            m = re.search(r"<preview[^>]*>", x)
+            won = code(x) == "0" and m and attr(m.group(0), "result") == "1"
+            if not won:
+                if code(x) == "0": note("tower", ch, r, "lost")
+                break
+            bump("tower"); note("tower", ch, r, reward(x))
 
 
 # ---------------------------------------------------------------- stamina
@@ -378,6 +380,51 @@ def window():
     note("window done", {k: g(x, k) for k in ("totlehurt", "score", "rank", "coinadd")})
 
 
+def war():
+    def info():
+        x = C.call("/rl_r_warnew", 7200)
+        tag = re.search(r"<preview[^>]*>", x)
+        return x, bool(tag) and attr(tag.group(0), "open") == "1", int(attr(tag.group(0), "resttime", "60") or 60) if tag else 60
+    limit = float(os.environ.get("MAX_WAIT") or 3600)
+    x, open_, rest = info()
+    if not open_:
+        if rest > limit:
+            note("war: not opening soon", rest); return
+        note("war: waiting", rest)
+        if rest > 180:
+            time.sleep(rest - 120); C.login(); globals()["GOLD"] = None
+        t0 = time.time()
+        while True:
+            x, open_, rest = info()
+            if open_: break
+            if time.time() - t0 > 900:
+                note("war: did not open", rest); return
+            time.sleep(min(30, max(2, rest)))
+    note("war open", x[:700])
+    t0, fails, seen = time.time(), 0, 0
+    while time.time() - t0 < 50 * 60:
+        x, open_, _ = info()
+        if not open_: break
+        u = (re.search(r"<user>.*?</user>", x, re.S) or [""])[0] if "<user>" in x else ""
+        if gi(u, "restalive", 1) <= 0:
+            time.sleep(60); continue                     # never buy lives; wait in case they come back
+        cd = gi(u, "resttime")
+        if cd > 0:
+            time.sleep(min(cd + 1, 120)); continue
+        r = C.call("/rl_w_warnew", 4102)                 # plain attack; 4101/4103/4104 cost premium currency and are never used
+        ok = code(r) == "0"
+        bump("war", ok)
+        if seen < 6 or not ok:
+            seen += 1; note("war hit", code(r), g(r, "message"), re.sub(r"<roundlist>.*?</roundlist>", "", r, flags=re.S)[:500])
+        if not ok:
+            fails += 1
+            if fails >= 8: break
+            time.sleep(10)
+        guard("war")
+    x, _, _ = info(); note("war done", (re.search(r"<user>.*?</user>", x, re.S) or [""])[0][:600] if "<user>" in x else x[:300])
+    res = C.call("/rl_r_warresultnew", 8100); note("war result", res[:600])
+
+
 def routine():
     for name, fn in (("claims", claims), ("freebies", freebies), ("tower", tower), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
@@ -401,7 +448,7 @@ def main():
         print("held"); return
     try:
         C.login(); guard("start"); note("=== run", mode, me())
-        window() if mode == "window" else routine()
+        {"window": window, "war": war}.get(mode, routine)()
         guard("end")
     except Stop as e:
         rc = 1; note("STOP", e); print("stopped:", str(e).split(":")[0])
