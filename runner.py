@@ -11,6 +11,7 @@ RATIO = float(os.environ.get("SAFE_RATIO", "1.3"))   # only fight players when a
 HERE = os.path.dirname(os.path.abspath(__file__))
 DETAIL = open(os.path.join(HERE, "detail.log"), "a", encoding="utf-8")
 STATS = {}
+PACE = 0.5
 SKIP = {x.strip() for x in os.environ.get("SKIP", "").split(",") if x.strip()}
 
 
@@ -81,7 +82,7 @@ class Client:
              "Platform": "android", "Version": "2.7", "Pt": 1503, "ServerID": ZONE, "GroupID": 3}
         p.update(extra)
         x = self._post(path, p)
-        time.sleep(0.5)
+        time.sleep(PACE)
         return x
 
 
@@ -452,6 +453,53 @@ def war():
     res = C.call("/rl_r_warresultnew", 8100); note("war result", res[:600])
 
 
+def training():
+    """Double-exp pill, then replay the latest stage we can win; refill stamina with owned noodles only."""
+    global PACE
+    lim = C.call("/rl_r_energy_limits", 1)
+    tag = re.search(r"<ramen[^>]*>", lim)
+    eats = int(attr(tag.group(0), "rest", "0")) if tag else 0
+    stock = {i: int(c) for i, c in re.findall(r'<tool id="(\d+)" count="(\d+)"', lim)}
+    a = C.call("/rl_r_adventure", 1)
+    m = re.search(r"<chapinfo[^>]*>", a)
+    if not m: return
+    ch, st = int(attr(m.group(0), "currentchap")), int(attr(m.group(0), "currentstage"))
+    stamina = me()["curaction"]
+    boosted = bool(do("x2", "/rl_w_propuse", 1800, Goodsid=32))
+    until = time.time() + 295
+    PACE = 0.15
+    backs = 0
+    try:
+        while backs <= 4 and ch >= 1:
+            s = C.call("/rl_r_next_story", 1, Chapter=ch, Stage=st)
+            nodes = [n for n in re.findall(r"<node[^>]*>", s) if attr(n, "available") == "1"]
+            if not nodes:
+                note("training: nothing open in", ch, st); ch, st = (ch, st - 1) if st > 1 else (ch - 1, 1); backs += 1; continue
+            n = nodes[0]; cost = int(attr(n, "stamina_cost", "999"))
+            if stamina < cost:
+                if boosted and time.time() > until:
+                    note("training: boost over, keeping remaining noodles"); break
+                gid = next((i for i in ("4", "3") if stock.get(i, 0) > 0), None)
+                if eats <= 0 or not gid:
+                    note("training: out of stamina and refills"); break
+                r = do("noodle", "/rl_w_propuse", 1800, Goodsid=gid)
+                if not r: break
+                eats -= 1; stock[gid] -= 1; stamina = gi(r, "bodyvalue", stamina)
+                continue
+            x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(n, "position_id"), WastCashBoss=0)
+            f = re.search(r"<preview[^>]*>", x)
+            lost = code(x) != "0" or (f and attr(f.group(0), "result") == "0")
+            if lost:                                     # cannot win here: step back one stage
+                note("training: cannot pass", ch, st, attr(n, "position_id"), code(x), g(x, "message"))
+                ch, st = (ch, st - 1) if st > 1 else (ch - 1, 1); backs += 1; continue
+            pv = re.search(r"<pve[^>]*>", x)
+            stamina = int(attr(pv.group(0), "curaction", str(stamina - cost))) if pv else stamina - cost
+            bump("train"); note("train", ch, st, attr(n, "position_id"), "stamina", stamina, reward(x)[:120])
+    finally:
+        PACE = 0.5
+    note("training done", me(), "boost left s", int(until - time.time()))
+
+
 def routine():
     for name, fn in (("claims", claims), ("freebies", freebies), ("tower", tower), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
@@ -475,7 +523,7 @@ def main():
         print("held"); return
     try:
         C.login(); guard("start"); note("=== run", mode, me())
-        {"window": window, "war": war}.get(mode, routine)()
+        {"window": window, "war": war, "train": training}.get(mode, routine)()
         guard("end")
     except Stop as e:
         rc = 1; note("STOP", e); print("stopped:", str(e).split(":")[0])

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: routine, window or war
+        description: routine, window, war or train
         default: routine
       wait:
         description: max seconds a window run may wait

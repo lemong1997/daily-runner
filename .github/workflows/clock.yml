@@ -26,7 +26,7 @@ jobs:
           SLOTS = [("00:20", "routine"), ("02:20", "routine"), ("04:20", "routine"), ("06:20", "routine"),
                    ("08:20", "routine"), ("10:20", "routine"), ("12:25", "window"), ("13:10", "routine"),
                    ("15:20", "routine"), ("17:20", "routine"), ("18:55", "war"), ("19:55", "window"),
-                   ("20:40", "routine"), ("22:20", "routine")]
+                   ("20:40", "routine"), ("21:10", "train"), ("22:20", "routine")]
           now = time.time(); t = time.gmtime(now + 7 * 3600); cur = t.tm_hour * 60 + t.tm_min
           best = None
           for hm, mode in SLOTS:
