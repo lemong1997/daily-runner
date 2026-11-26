@@ -1,0 +1,48 @@
+name: clock
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 */6 * * *"
+
+permissions:
+  actions: write
+
+concurrency:
+  group: clock
+  cancel-in-progress: true
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - name: wait for next slot
+        id: slot
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import time
+          # local time is UTC+7
+          SLOTS = [("00:20", "routine"), ("02:20", "routine"), ("04:20", "routine"), ("06:20", "routine"),
+                   ("08:20", "routine"), ("10:20", "routine"), ("12:25", "window"), ("13:10", "routine"),
+                   ("15:20", "routine"), ("17:20", "routine"), ("18:55", "war"), ("19:55", "window"),
+                   ("20:40", "routine"), ("22:20", "routine")]
+          now = time.time(); t = time.gmtime(now + 7 * 3600); cur = t.tm_hour * 60 + t.tm_min
+          best = None
+          for hm, mode in SLOTS:
+              h, m = map(int, hm.split(":")); d = (h * 60 + m - cur) % 1440
+              if d < 2: d += 1440
+              if best is None or d < best[0]: best = (d, mode)
+          time.sleep(max(0, best[0] * 60 - t.tm_sec))
+          print("mode=" + best[1])
+          PY
+      - name: start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MODE: ${{ steps.slot.outputs.mode }}
+        run: |
+          api() { curl -sS -m 30 -o /dev/null -w "%{http_code} " -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/actions/workflows/$1/dispatches" -d "$2"; }
+          echo "slot: $MODE  utc: $(date -u '+%H:%M:%S')"
+          api jobs.yml "{\"ref\":\"main\",\"inputs\":{\"mode\":\"$MODE\"}}"
+          api clock.yml '{"ref":"main"}'

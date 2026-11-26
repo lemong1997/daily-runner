@@ -9,13 +9,6 @@ on:
       wait:
         description: max seconds a window run may wait
         default: "3600"
-  schedule:
-    - cron: "17 */2 * * *"
-    - cron: "50 11 * * *"
-    - cron: "50 4 * * *"
-    - cron: "5 5 * * *"
-    - cron: "15 12 * * *"
-    - cron: "35 12 * * *"
 
 jobs:
   run:
