@@ -208,8 +208,23 @@ def story(limit=60):
         moved = p and (attr(p.group(0), "curstage"), attr(p.group(0), "pos")) != (st, pos)
         bump("story"); note("story", ch, st, pos, "stamina", before, "->", after, reward(x))
         stuck = 0 if (moved or after != before) else stuck + 1
-        if stuck >= 3:
-            note("story: no progress three times, leaving it"); return
+        if stuck >= 1:                                   # frontier fight lost: spend stamina on an earlier stage instead
+            note("story: frontier not passable now, replaying earlier stage"); replay(int(ch), int(st), limit); return
+
+
+def replay(ch, st, limit):
+    ch, st = (ch, st - 1) if st > 1 else (ch - 1, 1)
+    if ch < 1: return
+    for _ in range(limit):
+        s = C.call("/rl_r_next_story", 1, Chapter=ch, Stage=st)
+        nodes = [n for n in re.findall(r"<node[^>]*>", s) if attr(n, "available") == "1" and attr(n, "boss") == "0"]
+        if not nodes: note("replay: nothing open in", ch, st); return
+        n = nodes[0]
+        if me()["curaction"] < int(attr(n, "stamina_cost", "999")): return
+        x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(n, "position_id"), WastCashBoss=0)
+        if code(x) != "0":
+            note("replay stop", code(x), g(x, "message")); return
+        bump("replay"); note("replay", ch, st, attr(n, "position_id"), reward(x))
 
 
 def noodles():
