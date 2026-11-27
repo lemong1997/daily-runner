@@ -207,7 +207,7 @@ def extras():
                 else:
                     break
     left = 3 - int(prog.get("15", "0"))
-    for gid in ("24", "23", "22"):                             # bronze, then silver, then gold keys
+    for gid in ("22",):                                        # only gold chests count for the daily task (seen 2026-11-27)
         while left > 0:
             c = C.call("/rl_w_propuse", 1804)
             tag = next((i for i in re.findall(r"<item [^>]*>", c) if attr(i, "propid") == gid), "")
