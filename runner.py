@@ -602,7 +602,7 @@ def hunt_fight(targets, refill):
     start_gold = me()["gold"]; spent = 0; got = 0; have = set()
     for paid in (False, True):                           # first every free attempt, then paid replays where nothing dropped
         if paid and budget <= 0: break
-        for ch, st, pos, typ, cid, name, price in targets:
+        for ch, st, pos, typ, cid, name, price in (sorted(targets, key=lambda t: t[6]) if paid else targets):   # paid pass: cheapest replays first
             if (ch, st, pos) in have: continue
             for _ in range(40):
                 x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=pos, WastCashBoss=0)
@@ -619,7 +619,7 @@ def hunt_fight(targets, refill):
                 if f and attr(f.group(0), "result") == "0":
                     note("hunt: lost at", ch, st); have.add((ch, st, pos)); break
                 bump("hunt")
-                if re.search(rf"<type>{typ}</type><id>{cid}</id>", x):
+                if re.search(rf"<card><type>\d+</type><id>{cid}</id>", x):      # match on the card id; the listed type can differ
                     got += 1; have.add((ch, st, pos)); note("hunt: got", name, "at", ch, st, "paid so far", spent); break
     now = me()["gold"]
     note("hunt summary: bosses", len(targets), "cards", got, "paid", spent, "premium", start_gold, "->", now)
