@@ -340,25 +340,19 @@ def spar():
 
 
 def ladder():
-    """Daily tasks need 5 challenges and 1000 reputation; only clearly weaker players are challenged."""
-    prog = dict(re.findall(r'<task id="(\d+)" process="(\d+)"', C.call("/rl_r_dailytask", 1)))
-    if int(prog.get("4", "0")) >= 5 and int(prog.get("19", "0")) >= 1000: return
-    mine = me()
+    """Arena: the player accepts losses here, so spend the daily attempts a few per run."""
     for _ in range(5):
         x = C.call("/rl_r_sport", 8100)
         if code(x) != "0" or gi(x, "todayresttime") <= 0 or gi(x, "restbatter") <= 0 or gi(x, "resttime") > 0: return
-        pick = None
-        for u in sorted(re.findall(r"<user>(.*?)</user>", x, re.S), key=lambda u: gi(u, "rank")):
+        my_rank = gi(x, "rank")
+        cand = []
+        for u in re.findall(r"<user>(.*?)</user>", x, re.S):
             if g(u, "host") == "1": continue
             n = C.call("/rl_r_nickinfo", 5000, Nick=g(u, "nick"))
-            if code(n) == "0" and safe(mine, gi(n, "attackhigh"), gi(n, "defenseHigh"), gi(n, "chakrahigh")):
-                pick = g(u, "rank"); break
-        if not pick:
-            note("ladder: nobody clearly weaker in sight"); return
-        r = do("ladder", "/rl_w_sport", 8200, ToRank=pick)
-        m = re.search(r"<preview[^>]*>", r or "")
-        if not m or attr(m.group(0), "result") != "1":
-            note("ladder: not a win, stopping"); return
+            cand.append((0 if gi(u, "rank") < my_rank else 1, gi(n, "attackhigh") + gi(n, "defenseHigh"), g(u, "rank")))
+        if not cand: return
+        cand.sort()                                      # better-ranked first, weakest of them first
+        if not do("ladder", "/rl_w_sport", 8200, ToRank=cand[0][2]): return
 
 
 # ---------------------------------------------------------------- upkeep with soft currency only
@@ -504,9 +498,28 @@ def training():
     stamina = me()["curaction"]
     ich = re.search(r"<ichiraku[^>]*>", C.call("/rl_r_next_ichiraku", 1))
     free = int(attr(ich.group(0), "remaining", "0")) if ich and attr(ich.group(0), "available") == "1" else 0
+    state = {"eats": eats, "free": free}
+
+    def refill():
+        if state["free"] > 0:
+            state["free"] -= 1
+            if do("noodles", "/rl_w_ramen", 1): return True
+        gid = next((i for i in ("4", "3") if stock.get(i, 0) > 0), None)
+        if state["eats"] <= 0 or not gid: return False
+        if not do("noodle", "/rl_w_propuse", 1800, Goodsid=gid): return False
+        state["eats"] -= 1; stock[gid] -= 1
+        return True
+
+    targets = scan_bosses() if os.environ.get("HUNT", "1") != "0" else []
     boosted = os.environ.get("BOOST", "1") != "0" and bool(do("x2", "/rl_w_propuse", 1800, Goodsid=32))
     until = time.time() + 295
     PACE = 0.15
+    if targets:
+        try:
+            hunt_fight(targets, refill)
+        finally:
+            PACE = 0.15
+    stamina = me()["curaction"]
     backs = 0
     try:
         while backs <= 4 and ch >= 1:
@@ -518,17 +531,9 @@ def training():
             if stamina < cost:
                 if boosted and time.time() > until:
                     note("training: boost over, keeping remaining noodles"); break
-                if free > 0:                             # the two free daily refills go first (they fill to the cap)
-                    r = do("noodles", "/rl_w_ramen", 1)
-                    free -= 1
-                    if r:
-                        stamina = gi(r, "bodyvalue", stamina); continue
-                gid = next((i for i in ("4", "3") if stock.get(i, 0) > 0), None)
-                if eats <= 0 or not gid:
+                if not refill():
                     note("training: out of stamina and refills"); break
-                r = do("noodle", "/rl_w_propuse", 1800, Goodsid=gid)
-                if not r: break
-                eats -= 1; stock[gid] -= 1; stamina = gi(r, "bodyvalue", stamina)
+                stamina = me()["curaction"]
                 continue
             x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(n, "position_id"), WastCashBoss=0)
             f = re.search(r"<preview[^>]*>", x)
@@ -565,18 +570,13 @@ def closing():
     chests()
 
 
-def hunt():
-    """Fight stage bosses whose featured reward is a 5-star card we do not own yet.
-    Free attempts first; paid replays only inside GOLD_BUDGET (premium currency per run, default 0)."""
-    global GOLD, PACE
-    scan_only = os.environ.get("HUNT_SCAN") == "1"
-    budget = int(os.environ.get("GOLD_BUDGET") or 0)
-    bag = C.call("/rl_r_next_bag", 1)
-    owned = {(g(c, "type"), g(c, "id")) for c in re.findall(r"<card>(.*?)</card>", bag, re.S)}
+def scan_bosses():
+    """Stage bosses whose featured reward is a whole 5-star card (fragments and keys do not count)."""
+    global PACE
     m = re.search(r"<chapinfo[^>]*>", C.call("/rl_r_adventure", 1))
-    if not m: return
+    if not m: return []
     top = (int(attr(m.group(0), "currentchap")), int(attr(m.group(0), "currentstage")))
-    start_gold = me()["gold"]; spent = 0; todo = []; got = 0
+    out = []
     PACE = 0.15
     try:
         for ch in range(1, top[0] + 1):
@@ -585,33 +585,51 @@ def hunt():
                 s = C.call("/rl_r_next_story", 1, Chapter=ch, Stage=st)
                 if code(s) != "0" or "<node" not in s: break
                 for node, feat in re.findall(r"(<node [^>]*>)\s*(<featured_reward [^>]*>)?", s):
-                    if attr(node, "boss") == "0" or attr(feat, "stars") != "5": continue
-                    key = (attr(feat, "type"), attr(feat, "id"))
-                    if key in owned: continue
-                    todo.append((ch, st, attr(node, "position_id"), attr(feat, "name"), attr(node, "available"), attr(node, "replay_gold")))
-                    if scan_only or attr(node, "available") != "1": continue
-                    price = int(attr(node, "replay_gold", "999"))
-                    for _ in range(40):
-                        x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(node, "position_id"), WastCashBoss=0)
-                        if code(x) == "40003" and budget - spent >= price:      # free attempts used up
-                            x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(node, "position_id"), WastCashBoss=1)
-                            if code(x) == "0": spent += price
-                        if code(x) != "0":
-                            note("hunt stop", ch, st, code(x), g(x, "message")); break
-                        f = re.search(r"<preview[^>]*>", x)
-                        if f and attr(f.group(0), "result") == "0":
-                            note("hunt: lost at", ch, st); break
-                        bump("hunt")
-                        if re.search(rf"<type>{key[0]}</type><id>{key[1]}</id>", x):
-                            owned.add(key); got += 1; note("hunt: got", attr(feat, "name"), "at", ch, st); break
-                    if code(C.call("/rl_r_mainpage", 1)) != "0": raise Stop("session lost")
+                    name = attr(feat, "name")
+                    if attr(node, "boss") == "0" or attr(feat, "stars") != "5" or attr(node, "available") != "1": continue
+                    if re.search(r"fragment|key", name, re.I): continue
+                    out.append((ch, st, attr(node, "position_id"), attr(feat, "type"), attr(feat, "id"), name, int(attr(node, "replay_gold", "999"))))
     finally:
         PACE = 0.5
-    note("hunt summary: wanted", len(todo), "got", got, "paid", spent, todo[:60])
+    note("boss scan:", len(out), [(c, t, n) for c, t, _, _, _, n, _ in out])
+    return out
+
+
+def hunt_fight(targets, refill):
+    """One pass over the bosses: fight each until its 5-star card drops. Paid replays stay inside GOLD_BUDGET."""
+    global GOLD
+    budget = int(os.environ.get("GOLD_BUDGET") or 0)
+    start_gold = me()["gold"]; spent = 0; got = 0; have = set()
+    for paid in (False, True):                           # first every free attempt, then paid replays where nothing dropped
+        if paid and budget <= 0: break
+        for ch, st, pos, typ, cid, name, price in targets:
+            if (ch, st, pos) in have: continue
+            for _ in range(40):
+                x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=pos, WastCashBoss=0)
+                if code(x) == "40003":                           # free attempts used up
+                    if not paid or budget - spent < price: break
+                    x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=pos, WastCashBoss=1)
+                    if code(x) == "0": spent += price
+                if code(x) == "240001":                          # out of stamina
+                    if refill(): continue
+                    note("hunt: out of stamina"); break
+                if code(x) != "0":
+                    note("hunt stop", ch, st, code(x), g(x, "message")); break
+                f = re.search(r"<preview[^>]*>", x)
+                if f and attr(f.group(0), "result") == "0":
+                    note("hunt: lost at", ch, st); have.add((ch, st, pos)); break
+                bump("hunt")
+                if re.search(rf"<type>{typ}</type><id>{cid}</id>", x):
+                    got += 1; have.add((ch, st, pos)); note("hunt: got", name, "at", ch, st, "paid so far", spent); break
     now = me()["gold"]
-    if start_gold - now > spent:
+    note("hunt summary: bosses", len(targets), "cards", got, "paid", spent, "premium", start_gold, "->", now)
+    if start_gold - now > spent + 0:
         raise Stop("hunt cost more than recorded")
     GOLD = None
+
+
+def hunt():
+    scan_bosses()
 
 
 def routine():

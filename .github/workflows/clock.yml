@@ -23,7 +23,7 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import time
           # local time is UTC+7
-          SLOTS = [("02:00", "routine"), ("04:20", "routine"), ("06:20", "routine"), ("07:00", "hunt"), ("07:15", "train"),
+          SLOTS = [("02:00", "train"), ("02:40", "routine"), ("04:20", "routine"), ("06:20", "routine"),
                    ("08:20", "routine"), ("10:20", "routine"), ("12:25", "window"), ("13:10", "routine"),
                    ("15:20", "routine"), ("17:20", "routine"), ("18:55", "war"), ("19:55", "window"),
                    ("20:40", "routine"), ("22:20", "routine"), ("23:00", "spar"), ("23:40", "close")]
