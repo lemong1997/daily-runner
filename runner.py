@@ -439,11 +439,15 @@ def window():
     for _ in range(3):                                   # soft-currency boost, capped by the server
         if not do("boost", "/rl_w_xiao", 9, AddAttackType=1): break
     end = time.time() + rest + 30
-    misses = 0
+    misses = earned = hits = best = 0
     while time.time() < end:
         r = C.call("/rl_w_xiao_war", 2)
         ok = code(r) == "0"
         bump("hit", ok)
+        if ok:
+            a = re.search(r"<award.*?</award>", r, re.S)
+            c = gi(a.group(0), "coin") if a else 0
+            earned += c; hits += 1; best = max(best, c)
         if not ok:
             misses += 1
             if misses % 4 == 0:                          # another login may have ended our session: sign in again
@@ -455,6 +459,7 @@ def window():
         time.sleep(max(1, cd + 1) if cd else 1)
     x, _, _ = info()
     note("window done", {k: g(x, k) for k in ("totlehurt", "score", "rank", "coinadd")})
+    note("window silver from hits:", earned, "over", hits, "hits; best single hit", best)
 
 
 def war():
