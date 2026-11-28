@@ -1,3 +1,4 @@
 detail.log
 __pycache__/
 logrepo/
+*.out
