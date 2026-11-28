@@ -311,6 +311,19 @@ def spar():
             cand.append((gi(u, "coin"), g(u, "id")))
     cand.sort(reverse=True)
     note("spar candidates", len(cand), "pills left today", pills_left, "top", cand[:3])
+    hours = {h.strip() for h in os.environ.get("PILL_HOURS", "").split(",") if h.strip()}
+    if hours and str(time.gmtime(time.time() + 7 * 3600).tm_hour) not in hours:
+        pills_left = 0                                   # pills are kept for the hours when targets carry the most silver
+    if pills_left > 0 and os.environ.get("BUY_PILLS") == "1" and cand:
+        want = pills_left - stock.get("6", 0)            # full-refill pills cost 10 premium each; allowed by the player
+        if want > 0:
+            g0 = me()["gold"]
+            r = do("pillbuy", "/rl_w_shopbuy", 1700, Goodsid=6, Count=want)
+            g1 = me()["gold"]
+            note("pillbuy", want, "premium", g0, "->", g1)
+            if g0 - g1 > 10 * want: raise Stop("pills cost more than expected")
+            if r: stock["6"] = stock.get("6", 0) + want
+            globals()["GOLD"] = None
     pk, idx, losses, done = mine["pk_action"], 0, 0, {}
     while idx < len(cand):
         if pk <= 0:
@@ -573,6 +586,7 @@ def closing():
         raise Stop("tree cost more than expected")
     GOLD = None                                          # the agreed tree cost is not a guard violation
     chests()
+    note("after tree", me()); prize()
 
 
 def scan_bosses():
@@ -637,8 +651,21 @@ def hunt():
     scan_bosses()
 
 
+def prize():
+    """Buy the wanted silver-shop item the moment we can afford it (PRIZE = "<item id>:<price>")."""
+    spec = os.environ.get("PRIZE", "")
+    if ":" not in spec: return
+    iid, price = spec.split(":")
+    if me()["silver"] < int(price): return
+    s = C.call("/rl_r_silvershop", 1)
+    tag = next((t for t in re.findall(r"<item [^>]*>", s) if attr(t, "id") == iid), "")
+    if attr(tag, "price") != price or int(attr(tag, "remain", "0") or 0) <= 0:
+        note("prize: not on offer as expected", tag[:160]); return
+    do("prize", "/rl_w_silvershop", 1, ID=iid, Quantity=1)
+
+
 def routine():
-    for name, fn in (("claims", claims), ("freebies", freebies), ("extras", extras), ("tower", tower), ("spar", spar), ("ladder", ladder)):
+    for name, fn in (("spar", spar), ("prize", prize), ("claims", claims), ("freebies", freebies), ("extras", extras), ("tower", tower), ("ladder", ladder)):
         fn(); guard(name)
     if "story" not in SKIP:
         story(); guard("story")

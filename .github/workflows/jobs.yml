@@ -32,6 +32,9 @@ jobs:
           NOT_BEFORE: ${{ vars[format('ROUTINE_FROM_{0}', matrix.n)] }}
           SKIP: ${{ vars[format('SKIP_{0}', matrix.n)] }}
           GOLD_BUDGET: ${{ vars[format('GOLD_BUDGET_{0}', matrix.n)] }}
+          PILL_HOURS: ${{ vars[format('PILL_HOURS_{0}', matrix.n)] }}
+          BUY_PILLS: ${{ vars[format('BUY_PILLS_{0}', matrix.n)] }}
+          PRIZE: ${{ vars[format('PRIZE_{0}', matrix.n)] }}
           PICKED: ${{ github.event.inputs.mode }}
           MAX_WAIT: ${{ github.event.inputs.wait }}
           SCHED: ${{ github.event.schedule }}
