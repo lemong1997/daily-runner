@@ -12,6 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DETAIL = open(os.path.join(HERE, "detail.log"), "a", encoding="utf-8")
 STATS = {}
 PACE = 0.5
+TRIES = int(os.environ.get("TRIES") or 10)     # how often to retry a fight we narrowly lose
 SKIP = {x.strip() for x in os.environ.get("SKIP", "").split(",") if x.strip()}
 
 
@@ -232,9 +233,11 @@ def tower():
     top = int(attr(head.group(0), "maxchap", "0"))
     for ch in range(1, top + 1):                         # every floor of every tower can be fought once a day
         for r in range(1, 8):
-            x = C.call("/rl_w_dup", 3100, Chap=ch, Round=r)
-            m = re.search(r"<preview[^>]*>", x)
-            won = code(x) == "0" and m and attr(m.group(0), "result") == "1"
+            for attempt in range(TRIES if ch == top else 1):   # results vary from fight to fight: retry the frontier
+                x = C.call("/rl_w_dup", 3100, Chap=ch, Round=r)
+                m = re.search(r"<preview[^>]*>", x)
+                won = code(x) == "0" and m and attr(m.group(0), "result") == "1"
+                if won or code(x) != "0": break
             if not won:
                 if code(x) == "0": note("tower", ch, r, "lost")
                 break
@@ -543,7 +546,7 @@ def training():
         finally:
             PACE = 0.15
     stamina = me()["curaction"]
-    backs = 0
+    backs = tries = 0
     try:
         while backs <= 4 and ch >= 1:
             s = C.call("/rl_r_next_story", 1, Chapter=ch, Stage=st)
@@ -561,6 +564,8 @@ def training():
             x = C.call("/rl_w_pve", 3, ChapID=ch, StageID=st, Pos=attr(n, "position_id"), WastCashBoss=0)
             f = re.search(r"<preview[^>]*>", x)
             lost = code(x) != "0" or (f and attr(f.group(0), "result") == "0")
+            if lost and code(x) == "0" and backs == 0 and tries < TRIES:
+                tries += 1; continue                     # a lost fight costs nothing: try the frontier again
             if lost:                                     # cannot win here: step back one stage
                 note("training: cannot pass", ch, st, attr(n, "position_id"), code(x), g(x, "message"))
                 ch, st = (ch, st - 1) if st > 1 else (ch - 1, 1); backs += 1; continue
