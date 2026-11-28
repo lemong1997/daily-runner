@@ -426,10 +426,15 @@ def window():
     for _ in range(3):                                   # soft-currency boost, capped by the server
         if not do("boost", "/rl_w_xiao", 9, AddAttackType=1): break
     end = time.time() + rest + 30
+    misses = 0
     while time.time() < end:
         r = C.call("/rl_w_xiao_war", 2)
         ok = code(r) == "0"
         bump("hit", ok)
+        if not ok:
+            misses += 1
+            if misses % 4 == 0:                          # another login may have ended our session: sign in again
+                C.login(); globals()["GOLD"] = None
         x, open_, _ = info()
         if not open_: break
         cd = gi(x, "cdresttime")
@@ -633,7 +638,7 @@ def hunt():
 
 
 def routine():
-    for name, fn in (("claims", claims), ("freebies", freebies), ("extras", extras), ("tower", tower), ("ladder", ladder)):
+    for name, fn in (("claims", claims), ("freebies", freebies), ("extras", extras), ("tower", tower), ("spar", spar), ("ladder", ladder)):
         fn(); guard(name)
     if "story" not in SKIP:
         story(); guard("story")
